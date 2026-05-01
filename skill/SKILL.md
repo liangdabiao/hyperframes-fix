@@ -277,10 +277,60 @@ tl.from("#s2-heading", { x: -40, opacity: 0, duration: 0.6, ease: "expo.out" }, 
 - Vary eases across entrance tweens — use at least 3 different eases per scene
 - Don't repeat an entrance pattern within a scene
 - Avoid full-screen linear gradients on dark backgrounds (H.264 banding — use radial or solid + localized glow)
-- 60px+ headlines, 20px+ body, 16px+ data labels for rendered video
+- Font size minimums for **portrait 1080×1920**: card titles 48px+, card body 38px+, tags 38px+, scene headers 50px+, highlights 52px+. The old minimums (60px headlines, 20px body) were calibrated for landscape 1920×1080 and are far too small for vertical video. For landscape, scale these down by ~30% (titles 36px+, body 28px+).
+- `font-variant-numeric: tabular-nums` on number columns
 - `font-variant-numeric: tabular-nums` on number columns
 
 If no `design.md` exists, follow [house-style.md](./house-style.md) for aesthetic defaults.
+
+## Common Pitfalls
+
+### GSAP `from()` immediateRender conflict (CRITICAL)
+
+**Never use `gsap.from()` on overlapping selectors.** `from()` defaults to `immediateRender: true`, which immediately sets all matched elements to the "from" values (e.g., `opacity: 0`). When a second `from()` targets a subset of those same elements, it captures the already-invisible state as its end state — so the element animates from invisible to invisible and permanently disappears.
+
+```js
+// BUG — .card:nth-child(2) captures invisible state as end state, card stays hidden
+tl.from("#s06 .card", {y: 50, opacity: 0}, 48.8);
+tl.from("#s06 .card:nth-child(2)", {y: 50, opacity: 0}, 49.2);
+
+// FIX — fromTo with explicit end values + overwrite + immediateRender prevents conflict and flicker
+tl.fromTo("#s06 .card:nth-child(1)", {y: 50, opacity: 0}, {y: 0, opacity: 1, duration: 0.6, overwrite: "auto", immediateRender: true}, 48.8);
+tl.fromTo("#s06 .card:nth-child(2)", {y: 50, opacity: 0}, {y: 0, opacity: 1, duration: 0.6, overwrite: "auto", immediateRender: true}, 49.2);
+```
+
+**Rule:** When animating multiple child elements with staggered timing, use `fromTo()` with `overwrite: "auto"`, `immediateRender: true`, and individual `:nth-child()` selectors. Never mix a bulk parent selector (`.card`) with a child selector (`.card:nth-child(2)`) using `from()`. The `immediateRender: true` is required because `fromTo()` defaults to `immediateRender: false` — without it, elements flash visible for one frame before the animation starts.
+
+### Background image gradient overlay opacity
+
+When using `::after` pseudo-elements as gradient overlays on background images, keep alpha values between **0.40 and 0.60**. Values above 0.80 completely wash out the background photo, making it invisible. This is especially important for the News Flash 信息流快消 style which relies on Pexels background images.
+
+```css
+/* TOO DARK — background image invisible */
+.scene-bg::after { background: linear-gradient(180deg, rgba(0,0,0,0.85), rgba(0,0,0,0.75)); }
+
+/* CORRECT — image visible through overlay */
+.scene-bg::after { background: linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.45)); }
+```
+
+### Track overlap from rounded timings
+
+When deriving `data-start` and `data-duration` from a timeline (e.g., TTS generation output), rounding can cause adjacent clips to overlap by 0.1s on the same track, triggering `overlapping_clips_same_track` lint errors. Always verify that each clip's end time (`data-start + data-duration`) does not exceed the next clip's `data-start` on the same `data-track-index`. Use the exact values from `timeline.json`, or chain durations so each start equals the previous end.
+
+### Font sizes too small for portrait video (INFO-FLASH style)
+
+The skill's original minimums ("60px+ headlines, 20px+ body") were written for landscape 1920×1080 and are dangerously small for portrait 1080×1920. In practice, 32px card titles and 26px body text are unreadable on phone-sized output. Users reported "字还是很小" twice before sizes were large enough.
+
+**Portrait 1080×1920 minimums:**
+- Card titles (`.card-t`): **48px+** (was 24→32, still too small)
+- Card body (`.card-b`): **38px+** (was 20→26, still too small)
+- Tags (`.tag`): **38px+**
+- Scene headers (`.ht`): **50px+**
+- Highlight text: **52px+**
+- Card padding: **44px 40px+** (was 30px 28px)
+- Container padding (`.sc`): **100px 56px 80px 56px+** (was 80px 48px 60px 48px)
+
+**Why it keeps happening:** The default web-developer instinct is to use small, dense type. Video is viewed at arm's length on a phone — every element needs to be billboard-scale. If a user says "字很小", increase ALL sizes by 40-50%, not 10-20%.
 
 ## Typography and Assets
 
