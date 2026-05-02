@@ -277,8 +277,7 @@ tl.from("#s2-heading", { x: -40, opacity: 0, duration: 0.6, ease: "expo.out" }, 
 - Vary eases across entrance tweens — use at least 3 different eases per scene
 - Don't repeat an entrance pattern within a scene
 - Avoid full-screen linear gradients on dark backgrounds (H.264 banding — use radial or solid + localized glow)
-- Font size minimums for **portrait 1080×1920**: card titles 48px+, card body 38px+, tags 38px+, scene headers 50px+, highlights 52px+. The old minimums (60px headlines, 20px body) were calibrated for landscape 1920×1080 and are far too small for vertical video. For landscape, scale these down by ~30% (titles 36px+, body 28px+).
-- `font-variant-numeric: tabular-nums` on number columns
+- Font size minimums for **portrait 1080×1920**: card titles 56px+, card body 44px+, tags 44px+, scene headers 56px+, highlights 60px+, infographic labels 42px+. For landscape, scale these down by ~30% (titles 40px+, body 32px+).
 - `font-variant-numeric: tabular-nums` on number columns
 
 If no `design.md` exists, follow [house-style.md](./house-style.md) for aesthetic defaults.
@@ -322,15 +321,16 @@ When deriving `data-start` and `data-duration` from a timeline (e.g., TTS genera
 The skill's original minimums ("60px+ headlines, 20px+ body") were written for landscape 1920×1080 and are dangerously small for portrait 1080×1920. In practice, 32px card titles and 26px body text are unreadable on phone-sized output. Users reported "字还是很小" twice before sizes were large enough.
 
 **Portrait 1080×1920 minimums:**
-- Card titles (`.card-t`): **48px+** (was 24→32, still too small)
-- Card body (`.card-b`): **38px+** (was 20→26, still too small)
-- Tags (`.tag`): **38px+**
-- Scene headers (`.ht`): **50px+**
-- Highlight text: **52px+**
-- Card padding: **44px 40px+** (was 30px 28px)
-- Container padding (`.sc`): **100px 56px 80px 56px+** (was 80px 48px 60px 48px)
+- Card titles (`.card-t`): **56px+** (was 24→32→48, still too small)
+- Card body (`.card-b`): **44px+** (was 20→26→38, still too small)
+- Tags (`.tag`): **44px+**
+- Scene headers (`.ht`): **56px+**
+- Highlight text: **60px+**
+- Infographic labels: **42px+**
+- Card padding: **52px 48px+** (was 30px 28px→44px 40px)
+- Container padding (`.sc`): **110px 60px 90px 60px+** (was 80px 48px→100px 56px)
 
-**Why it keeps happening:** The default web-developer instinct is to use small, dense type. Video is viewed at arm's length on a phone — every element needs to be billboard-scale. If a user says "字很小", increase ALL sizes by 40-50%, not 10-20%.
+**Why it keeps happening:** The default web-developer instinct is to use small, dense type. Video is viewed at arm's length on a phone — every element needs to be billboard-scale. If a user says "字很小", increase ALL sizes by 40-50%, not 10-20%. This has now happened THREE times across sessions. Use the minimums above as absolute floor, never start lower.
 
 ## Typography and Assets
 
