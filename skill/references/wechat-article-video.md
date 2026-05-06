@@ -1,11 +1,11 @@
 ---
 name: wechat-article-video
-description: Parse WeChat public account articles (mp.weixin.qq.com) via API, extract content and images, then produce HyperFrames video compositions with mixed scene types (text cards, fullscreen images, split layouts, stat cards). Covers API parsing, image downloading, narration generation, scene planning, and HTML composition authoring.
+description: Parse WeChat public account articles (mp.weixin.qq.com) via API, extract content and images, then produce HyperFrames video compositions with cinematic design, image showcase (complete, no crop), text overlays, animated infographics, kinetic typography, and comparison charts. Covers API parsing, image downloading, narration generation, scene planning, designer-quality composition, and validation.
 ---
 
 # WeChat Article → Video Workflow
 
-Automated pipeline for converting a WeChat public account article into a HyperFrames video composition. Covers article parsing, image extraction, content analysis, scene design, TTS narration, and full HTML composition output.
+Automated pipeline for converting a WeChat public account article into a HyperFrames video composition. Covers article parsing, image extraction, content analysis, scene design, TTS narration, and designer-quality HTML composition output.
 
 ## Trigger
 
@@ -39,52 +39,64 @@ Save the markdown for reference: `wx_article.md`.
 
 From the parsed markdown, extract:
 
-1. **Images**: all `![alt](url)` references — these are the article's screenshots/illustrations
-2. **Headings**: `## ` or `### ` lines — these define the article's section structure
+1. **Images**: all `![alt](url)` references — article screenshots/illustrations
+2. **Headings**: `## ` or `### ` lines — section structure
 3. **Key quotes**: impactful sentences for quote cards
-4. **Data points**: statistics, percentages, comparisons for stat cards
+4. **Data points**: statistics, percentages, comparisons for infographics
 
 ```python
 imgs = re.findall(r'!\[.*?\]\((.+?)\)', md)
 headings = re.findall(r'^#{2,3}\s+(.+)$', md, re.MULTILINE)
 ```
 
+Check image dimensions with PIL to understand aspect ratios before planning scenes:
+
+```python
+from PIL import Image
+for url in imgs:
+    name = os.path.basename(url)
+    im = Image.open(f"img/{name}")
+    print(f"{name}: {im.size[0]}x{im.size[1]}")
+```
+
 ## Step 3: Plan Scene Types
 
-**CRITICAL: Never use pure image carousel.** Mix at least 3-4 different scene types for visual variety. The scene type determines the visual treatment.
+**CRITICAL: Never use pure image carousel.** Mix at least 4 different scene types. Think like a designer, not a developer.
+
+### Design Principles (Non-Negotiable)
+
+1. **Images must be shown COMPLETELY** — use `object-fit:contain`, never `object-fit:cover`. Article screenshots contain text that becomes unreadable when cropped.
+2. **Text overlays ON images** — don't separate text and image into different areas. Overlay title text on top/bottom of the image with `text-shadow` for readability.
+3. **Dynamic infographics** — use animated progress bars, counting numbers, comparison bar charts. Static numbers are boring; animate them.
+4. **Cinematic feel** — dark backgrounds, subtle gradients, bottom-aligned hero text, pill tags, large shadows on image cards.
+5. **No rigid grids** — vary the visual weight across scenes. Some scenes are image-heavy, some are text-heavy, some are data-heavy.
 
 ### Scene Type Catalog
 
 | Type | Visual | Best for |
 |:---|:---|:---|
-| **text-card** | Pexels BG photo + gradient overlay + centered large text | Title, section intro, key message, outro |
-| **img-full** | Fullscreen screenshot with bottom caption bar | Article screenshots, comparison images, data tables |
-| **split-left** | Left 55% text, right 45% image with gradient fade | Explaining an image, context + evidence |
-| **split-right** | Left 45% image with gradient fade, right 55% text | Image showcase + explanation |
-| **quote-card** | Dark BG + left accent border + large quote text | Impactful quotes, user complaints, key insights |
-| **stat-card** | Dark BG +超大数字 + label | Data comparisons, hit rates, percentages |
+| **cinema-title** | Pexels BG + bottom-aligned hero text + pill tags | Opening title, closing message |
+| **showcase** | Complete image centered with rounded corners + shadow + text overlay top/bottom | Article screenshots, comparison images |
+| **infographic-grid** | 2x2 or 1x3 grid of animated data cards with progress bars | Key metrics, stats, comparisons |
+| **comparison-bars** | Horizontal bar chart with 3+ items, animated fill | Model benchmarks, score comparisons |
+| **kinetic-quote** | Centered large text + accent line + em highlights | Key insights, conclusions, powerful quotes |
 
 ### Scene Planning Rules
 
-1. **Open with text-card** — title + subtitle + tag, Pexels background
-2. **Alternate scene types** — never put 2 same-type scenes back to back
-3. **Match content to type**:
-   - Screenshots/comparisons → `img-full`
-   - Section transitions / key points → `text-card`
-   - Data/stats → `stat-card`
-   - Image needing explanation → `split-left` or `split-right`
-   - Impactful quotes → `quote-card`
-4. **End with text-card** — closing message, Pexels background (same as opening)
-5. **Scene count**: typically 10-16 scenes for a standard article
+1. **Open with cinema-title** — eyebrow tag + large title + description + pill tags
+2. **Use showcase for article images** — most images should be this type, with overlay text
+3. **Add 1-2 infographic scenes** — extract data from the article (percentages, scores, counts)
+4. **Add 1 comparison scene** — if the article compares things (models, products, methods)
+5. **End with kinetic-quote or cinema-title** — powerful closing statement
+6. **Scene count**: 10-14 scenes for a typical article
+7. **Never repeat same type consecutively**
 
 ### Example Scene Sequence
 
 ```
-text-card (title) → quote-card (problem) → img-full (screenshot)
-→ img-full (screenshot) → text-card (solution intro) → split-left (feature + image)
-→ stat-card (key metric) → img-full (comparison) → split-right (analysis + image)
-→ text-card (section header) → img-full (result) → split-left (workflow + image)
-→ img-full (architecture) → text-card (outro)
+cinema-title → showcase (overview) → showcase (benchmark) → showcase (test result)
+→ showcase (detail) → infographic-grid (4 key metrics) → comparison-bars (model scores)
+→ kinetic-quote (key insight) → cinema-title (outro)
 ```
 
 ## Step 4: Write Narration
@@ -92,23 +104,31 @@ text-card (title) → quote-card (problem) → img-full (screenshot)
 Split article content into narration segments matching planned scenes:
 
 - **Title scene**: 1-2 sentences summarizing the article topic
-- **Content scenes**: Extract key points from the article text, paraphrase concisely
+- **Content scenes**: Extract key points, paraphrase concisely
 - **Outro**: Call-to-action or closing thought
-- **Text density per scene**: follow tts-workflow.md guidelines (60-70% of scene duration at TTS speed 1.6)
+- **Text density**: follow tts-workflow.md guidelines (60-70% of scene duration at TTS speed 1.6)
 
 Generate audio via MiniMax TTS API (see `external-tts.md` for full details).
 
 ## Step 5: Calculate Timing
 
-**Total duration = max(last scene end time, last audio end time)**
+**CRITICAL: Total duration MUST be ≥ last audio end time.** This is the #1 source of black-screen bugs.
 
-This is critical — audio often runs longer than visuals. Never cut audio short. If audio exceeds image rotation, add an outro text-card scene to fill the gap.
+```python
+# After all audio generated:
+last_audio_end = max(audio_start + audio_dur for all audio clips)
+last_scene_end = max(scene_start + scene_dur for all scenes)
+TOTAL_DUR = max(last_audio_end, last_scene_end) + 1.0  # +1s buffer
+```
+
+If audio exceeds visuals by a lot, extend the outro scene duration to fill the gap.
 
 ```
-Scene duration: typically 6-8 seconds
-Transition gap: 0.4s between scenes (0.8s for major transitions like title→content)
-Audio buffer: +2.0s per scene recommended
+Scene duration: typically 7-10 seconds per showcase, 9-12 for infographic
+Transition gap: 0.4s between scenes (0.8s blur dissolve for title→first content)
 ```
+
+**Audio track overlap bug**: Floating-point rounding causes `overlapping_clips_same_track` errors. Fix by adding +0.01s to the start time of the later clip when two clips share a boundary (e.g., `63.15` → `63.16`).
 
 ## Step 6: Build HTML Composition
 
@@ -123,82 +143,133 @@ wx-video/
     audio/              # Generated TTS narration files
 ```
 
-### CSS Patterns for Each Scene Type
+### CSS Patterns
 
-**text-card** (centered text on photo background):
+**cinema-title** (cinematic hero with bottom-aligned text):
 ```css
-.text-card{background-size:cover;background-position:center}
-.text-card::after{content:'';position:absolute;inset:0;
-  background:linear-gradient(135deg,rgba(10,10,15,0.88) 0%,rgba(10,10,15,0.65) 100%);z-index:1}
-.text-card .tc-inner{position:relative;z-index:5;display:flex;flex-direction:column;
-  justify-content:center;align-items:center;width:100%;height:100%;text-align:center;
-  padding:100px 120px 80px}
-.tc-huge{font-size:76px;font-weight:900;line-height:1.15;letter-spacing:-2px;max-width:1400px}
-.tc-sub{font-size:32px;color:#7A7A8A;font-weight:300;margin-top:20px;max-width:1200px}
+.cinema-bg{position:absolute;inset:0;background-size:cover;background-position:center}
+.cinema-bg::after{content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(6,6,10,0.75) 0%,rgba(6,6,10,0.25) 50%,rgba(6,6,10,0.85) 100%)}
+.hero-text{position:relative;z-index:5;display:flex;flex-direction:column;
+  justify-content:flex-end;width:100%;height:100%;padding:100px 140px 90px}
+.hero-eyebrow{font-size:18px;color:rgba(255,255,255,0.5);font-family:'Space Grotesk',monospace;
+  letter-spacing:6px;text-transform:uppercase;margin-bottom:20px}
+.hero-title{font-size:90px;font-weight:900;line-height:1.0;letter-spacing:-3px}
+.hero-title em{font-style:normal;color:#F59E0B}
+.hero-desc{font-size:26px;color:rgba(255,255,255,0.55);font-weight:300;margin-top:24px;max-width:900px}
+.hero-pills{display:flex;gap:12px;margin-top:32px}
+.pill{padding:8px 24px;border-radius:100px;font-size:18px;font-weight:600;
+  border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7)}
+.pill-hot{background:#F59E0B;color:#000;border-color:#F59E0B}
 ```
 
-**img-full** (fullscreen image with caption):
+**showcase** (complete image + text overlay — USE THIS for article images):
 ```css
-.img-full .img-wrap{position:absolute;top:0;left:0;width:100%;height:100%;z-index:1;overflow:hidden}
-.img-full .img-wrap img{width:100%;height:100%;object-fit:cover;display:block}
-.img-full .img-info{position:absolute;bottom:0;left:0;right:0;padding:32px 64px;z-index:8;
-  background:linear-gradient(transparent,rgba(0,0,0,0.82));pointer-events:none}
+.showcase{position:relative;width:100%;height:100%;display:flex;
+  align-items:center;justify-content:center}
+.showcase-img{max-width:88%;max-height:82vh;border-radius:16px;
+  box-shadow:0 40px 120px rgba(0,0,0,0.6);
+  object-fit:contain;display:block;position:relative;z-index:2}
+/* IMPORTANT: object-fit:contain — never cover — images must not be cropped */
+.overlay-top{position:absolute;top:80px;left:140px;right:140px;z-index:10}
+.overlay-top h2{font-size:48px;font-weight:800;line-height:1.2;letter-spacing:-1px;
+  text-shadow:0 4px 30px rgba(0,0,0,0.8)}
+.overlay-top h2 em{font-style:normal;color:#F59E0B}
+.overlay-bottom{position:absolute;bottom:80px;left:140px;right:140px;z-index:10;
+  display:flex;justify-content:space-between;align-items:flex-end}
+.overlay-bottom p{font-size:22px;color:rgba(255,255,255,0.6);text-shadow:0 2px 20px rgba(0,0,0,0.9)}
+.overlay-badge{padding:10px 28px;border-radius:12px;font-size:18px;font-weight:700;
+  background:rgba(245,158,11,0.9);color:#000}
 ```
 
-**split-left** (text left, image right):
+**infographic-grid** (2x2 animated data cards):
 ```css
-.split-left .sp-img{position:absolute;top:0;right:0;width:55%;height:100%;overflow:hidden}
-.split-left .sp-img img{width:100%;height:100%;object-fit:cover;display:block}
-.split-left .sp-img::after{content:'';position:absolute;inset:0;
-  background:linear-gradient(270deg,rgba(10,10,15,0.70) 0%,transparent 100%)}
-.split-left .sp-text{position:absolute;top:0;left:0;width:55%;height:100%;z-index:5;
-  display:flex;flex-direction:column;justify-content:center;padding:80px 60px 80px 100px;gap:20px}
+.info-bg{position:absolute;inset:0;background:linear-gradient(160deg,#0a0a14,#12121f,#0a0a14)}
+.info-grid{position:relative;z-index:5;width:100%;height:100%;display:grid;
+  grid-template-columns:1fr 1fr;gap:0;padding:80px 100px}
+.info-card{display:flex;flex-direction:column;justify-content:center;padding:40px 50px;
+  border:1px solid rgba(255,255,255,0.06);position:relative}
+.info-card::before{content:'';position:absolute;top:0;left:0;width:4px;height:60px;
+  background:#F59E0B;border-radius:0 4px 4px 0}
+.info-num{font-size:80px;font-weight:800;color:#F59E0B;font-family:'Space Grotesk',sans-serif;
+  line-height:1}
+.info-num span{font-size:32px;color:rgba(255,255,255,0.4);font-weight:400}
+.info-bar-wrap{width:100%;height:8px;background:rgba(255,255,255,0.08);border-radius:4px;
+  margin-top:16px;overflow:hidden}
+.info-bar{height:100%;background:linear-gradient(90deg,#F59E0B,#FBBF24);
+  border-radius:4px;width:0}  /* animated from 0 to target % */
 ```
 
-**split-right** (image left, text right):
+**comparison-bars** (horizontal bar chart):
 ```css
-.split-right .sp-img{position:absolute;top:0;left:0;width:55%;height:100%;overflow:hidden}
-.split-right .sp-text{position:absolute;top:0;right:0;width:55%;height:100%;z-index:5;
-  display:flex;flex-direction:column;justify-content:center;padding:80px 100px 80px 60px;
-  gap:20px;text-align:right}
+.compare-row{display:flex;align-items:center;gap:24px}
+.compare-label{width:280px;font-size:20px;color:rgba(255,255,255,0.6);text-align:right}
+.compare-track{flex:1;height:28px;background:rgba(255,255,255,0.05);border-radius:6px;overflow:hidden}
+.compare-fill{height:100%;border-radius:6px;display:flex;align-items:center;padding-left:12px;
+  font-size:14px;font-weight:700;font-family:'Space Grotesk',monospace;color:rgba(0,0,0,0.8)}
+.fill-lite{background:linear-gradient(90deg,#F59E0B,#FBBF24)}
+.fill-pro{background:linear-gradient(90deg,#10B981,#34D399)}
+.fill-gemini{background:linear-gradient(90deg,#6366F1,#818CF8)}
 ```
 
-**stat-card** (big number):
+**kinetic-quote** (centered kinetic typography):
 ```css
-.stat-card .st-inner{position:relative;z-index:5;display:flex;flex-direction:column;
-  justify-content:center;align-items:center;width:100%;height:100%;text-align:center;
-  padding:100px 120px}
-.st-num{font-size:120px;font-weight:900;color:#A855F7;line-height:1;font-family:'Space Grotesk',sans-serif}
+.kinetic-bg{position:absolute;inset:0;
+  background:radial-gradient(ellipse at 30% 50%,rgba(245,158,11,0.08),transparent 60%),#06060A}
+.kinetic-content{position:relative;z-index:5;width:100%;height:100%;display:flex;
+  flex-direction:column;justify-content:center;align-items:center;padding:120px 160px;text-align:center}
+.kinetic-quote{font-size:42px;font-weight:300;color:rgba(255,255,255,0.85);line-height:1.8;
+  max-width:1400px}
+.kinetic-quote em{font-style:normal;font-weight:700;color:#F59E0B}
+.kinetic-line{width:60px;height:3px;background:#F59E0B;border-radius:2px}
 ```
 
 ### Animation Patterns
 
-Each scene type has its own entrance animation:
-
-- **text-card**: title slides up `y:60→0`, subtitle follows, tag last — staggered power3.out
-- **img-full**: image fades in with subtle scale `scale:1.05→1`, caption slides up
-- **split-left**: image slides from right with scale, text slides from left `x:-40→0`
-- **split-right**: mirror of split-left
-- **stat-card**: number scales up with `back.out(1.4)` bounce, label follows
-- **quote-card**: quote slides from left with opacity, subtitle follows
-
-Transitions between scenes: 0.2s black fade (quick cuts) or 0.4s blur dissolve (major transitions).
-
-### Timeline Construction
-
+**Showcase entrance** (image pops in + text overlays):
 ```javascript
-// Scene entrance pattern (fromTo + overwrite:auto + immediateRender:true)
-tl.fromTo("#s1",{opacity:0},{opacity:1,duration:0.05,overwrite:"auto",immediateRender:true},0.00);
-tl.fromTo("#s1 .tc-huge",{y:60,opacity:0},{y:0,opacity:1,duration:0.7,ease:"power3.out",overwrite:"auto",immediateRender:true},0.30);
-
-// Quick transition between scenes
-tl.fromTo("#t1",{opacity:0},{opacity:1,duration:0.20,overwrite:"auto",immediateRender:true},8.00);
-tl.to("#t1",{opacity:0,duration:0.20,overwrite:"auto"},8.20);
+tl.fromTo("#s2 .showcase-img",{opacity:0,scale:0.92,y:30},
+  {opacity:1,scale:1,y:0,duration:0.7,ease:"power3.out",overwrite:"auto",immediateRender:true},9.10);
+tl.fromTo("#s2 .overlay-top h2",{y:40,opacity:0},{y:0,opacity:1,duration:0.5,ease:"power2.out",
+  overwrite:"auto",immediateRender:true},9.30);
+tl.fromTo("#s2 .overlay-bottom",{y:20,opacity:0},{y:0,opacity:1,duration:0.4,ease:"expo.out",
+  overwrite:"auto",immediateRender:true},9.45);
 ```
+
+**Infographic animation** (numbers bounce in + bars grow):
+```javascript
+tl.fromTo("#inf-1",{opacity:0,scale:0.7},{opacity:1,scale:1,duration:0.5,
+  ease:"back.out(1.6)",overwrite:"auto",immediateRender:true},65.50);
+tl.to("#bar-1",{width:"95%",duration:1.2,ease:"power3.out",overwrite:"auto"},66.30);
+```
+
+**Comparison bars** (bars grow with stagger):
+```javascript
+tl.to("#cb-1a",{width:"87.7%",duration:0.8,ease:"power3.out",overwrite:"auto"},75.20);
+tl.to("#cb-1b",{width:"89.5%",duration:0.8,ease:"power3.out",overwrite:"auto"},75.30);
+```
+
+**Kinetic quote** (line draws + text fades in + em highlights stagger):
+```javascript
+tl.fromTo("#k-line",{width:0},{width:60,duration:0.4,ease:"power2.out",
+  overwrite:"auto",immediateRender:true},85.30);
+tl.fromTo("#k-quote",{opacity:0,y:40},{opacity:1,y:0,duration:0.8,ease:"power3.out",
+  overwrite:"auto",immediateRender:true},85.50);
+tl.fromTo("#k-quote em",{opacity:0},{opacity:1,duration:0.5,stagger:0.15,overwrite:"auto"},86.00);
+```
+
+**Hero title entrance** (staggered bottom-up):
+```javascript
+tl.fromTo(".hero-eyebrow",{opacity:0,y:15},{opacity:1,y:0,duration:0.5,ease:"power2.out"},0.40);
+tl.fromTo(".hero-title",{opacity:0,y:50},{opacity:1,y:0,duration:0.8,ease:"power3.out"},0.60);
+tl.from(".pill",{opacity:0,y:15,duration:0.4,ease:"power2.out",stagger:0.08},1.20);
+```
+
+Transitions: 0.2s black fade for quick scene changes, 0.4s blur dissolve for title→first content.
 
 ### Brand Bar (Required)
 
-Every scene must include the brand bar:
+Every scene must include:
 ```html
 <div class="brand-bar"><span>github.com/liangdabiao</span></div>
 ```
@@ -206,7 +277,7 @@ Every scene must include the brand bar:
 ### Data Attributes
 
 Every timed element needs:
-- `class="clip"` — required on all scenes and transitions for proper visibility control
+- `class="clip"` — required on all scenes and transitions
 - `data-start`, `data-duration`, `data-track-index` — on scenes
 - Transitions on `data-track-index="15"`
 
@@ -214,50 +285,21 @@ Every timed element needs:
 
 ```bash
 npx hyperframes lint <video-dir>        # 0 errors required
-npx hyperframes inspect <video-dir>      # 0 errors, warnings acceptable
+npx hyperframes inspect <video-dir> --timeout 30000  # 0 errors
 ```
-
-Common issues:
-- `timed_element_missing_clip_class` → add `class="clip"` to all timed scenes/transitions
-- `container_overflow` on img-full images → normal for `object-fit:cover`, safe to ignore
-- `composition_file_too_large` → warning only for single-file compositions
-
-## Build Script Template
-
-Create a Python build script that automates the entire pipeline:
-
-```python
-import os, re, requests, html as h
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
-# 1. Parse article via API
-# 2. Extract images and content
-# 3. Download images
-# 4. Generate TTS narration
-# 5. Calculate timing
-# 6. Build HTML with mixed scene types
-# 7. Output video/index.html
-```
-
-Key build script considerations:
-- Use `requests` for both API calls and image downloads
-- Parallel image downloads with `ThreadPoolExecutor(max_workers=5)`
-- Skip re-downloading existing files (check size > 1000 bytes)
-- TTS: use MiniMax API with speed=1.6, male-qn-qingse voice
-- Audio gap: 0.01s between sequential audio clips on same track
-- Escape all user content with `html.escape()` before inserting into HTML
 
 ## Common Pitfalls
 
 | Problem | Cause | Fix |
 |:---|:---|:---|
-| Video cuts off early | Total duration doesn't cover all audio | Calculate `max(last_scene_end, last_audio_end)` |
-| Pure image carousel boring | Only one scene type used | Mix 3-4 scene types, alternate |
-| Audio truncated | Video duration < audio end time | Add outro scene to fill gap |
-| Images not loading | URL path wrong or download failed | Verify all images downloaded, check paths |
-| Text too small on landscape | Using portrait font sizes | Scale down ~30% for 1920x1080 |
-| Scene jump cuts | No transition between scenes | Add fade transitions between every scene |
-| Lint clip warnings | Missing `class="clip"` | Add to all timed scenes and transitions |
+| **Last 25% black screen** | `data-duration` < last audio end time | `TOTAL_DUR = max(last_audio_end, last_scene_end) + 1` |
+| **Images cropped / text unreadable** | `object-fit:cover` | Always use `object-fit:contain` on article images |
+| **Pure image carousel boring** | Only one scene type | Mix showcase + infographic + comparison + kinetic |
+| **Audio overlapping lint error** | Float precision at clip boundaries | Add +0.01s to later clip's `data-start` |
+| **Rigid / template-looking layout** | Fixed grid, no visual variety | Vary scene types, use overlays, add animated data |
+| **No data in video** | Article has stats but they're not visualized | Extract numbers → infographic-grid + comparison-bars |
+| **Text too small** | Using web sizes on video canvas | Landscape 1920x1080: titles 48-90px, body 22-32px |
+| **Scene jump cuts** | Missing transitions | Add fade transition between every scene |
 
 ## Related References
 
