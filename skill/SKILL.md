@@ -1,6 +1,6 @@
 ---
 name: hyperframes
-description: Create video compositions, animations, title cards, overlays, captions, voiceovers, audio-reactive visuals, and scene transitions in HyperFrames HTML. Use when asked to build any HTML-based video content, add captions or subtitles synced to audio, generate text-to-speech narration, integrate third-party TTS voiceover (MiniMax, OpenAI, etc.) with per-scene audio segmentation and sync, create audio-reactive animation (beat sync, glow, pulse driven by music), add animated text highlighting (marker sweeps, hand-drawn circles, burst lines, scribble, sketchout), or add transitions between scenes (crossfades, wipes, reveals, shader transitions). Covers composition authoring, timing, media, and the full video production workflow. For CLI commands (init, lint, preview, render, transcribe, tts) see the hyperframes-cli skill.
+description: Create video compositions, animations, title cards, overlays, captions, voiceovers, audio-reactive visuals, and scene transitions in HyperFrames HTML. Use when asked to build any HTML-based video content, add captions or subtitles synced to audio, generate text-to-speech narration, integrate third-party TTS voiceover (MiniMax, OpenAI, etc.) with per-scene audio segmentation and sync, create audio-reactive animation (beat sync, glow, pulse driven by music), add animated text highlighting (marker sweeps, hand-drawn circles, burst lines, scribble, sketchout), or add transitions between scenes (crossfades, wipes, reveals, shader transitions). Covers composition authoring, timing, media, and the full video production workflow. Also triggers on WeChat article URLs (mp.weixin.qq.com) to auto-parse and produce video. For CLI commands (init, lint, preview, render, transcribe, tts) see the hyperframes-cli skill.
 ---
 
 # HyperFrames
@@ -160,6 +160,16 @@ Layered effects (glow behind text, shadow elements, background patterns) and z-s
 
 Sub-compositions loaded via `data-composition-src` use a `<template>` wrapper. **Standalone compositions (the main index.html) do NOT use `<template>`** — they put the `data-composition-id` div directly in `<body>`. Using `<template>` on a standalone file hides all content from the browser and breaks rendering.
 
+**CRITICAL: Always include `data-duration` on the root composition div.** Without it, the framework doesn't know the total video length and will either use the GSAP timeline duration (which only covers animations, not scene holds) or truncate the video prematurely. The correct duration is the sum of the last scene's `data-start + data-duration`.
+
+```html
+<!-- WRONG — no data-duration, video gets cut off -->
+<div data-composition-id="main" data-width="1080" data-height="1920" data-start="0">
+
+<!-- CORRECT — explicit total duration -->
+<div data-composition-id="main" data-width="1080" data-height="1920" data-start="0" data-duration="162.9">
+```
+
 Sub-composition structure:
 
 ```html
@@ -315,6 +325,23 @@ When using `::after` pseudo-elements as gradient overlays on background images, 
 ### Track overlap from rounded timings
 
 When deriving `data-start` and `data-duration` from a timeline (e.g., TTS generation output), rounding can cause adjacent clips to overlap by 0.1s on the same track, triggering `overlapping_clips_same_track` lint errors. Always verify that each clip's end time (`data-start + data-duration`) does not exceed the next clip's `data-start` on the same `data-track-index`. Use the exact values from `timeline.json`, or chain durations so each start equals the previous end.
+
+### Scene count limit — max ~12 scenes per composition
+
+**Never exceed ~12 scenes.** The capture engine cannot handle 20+ `position:absolute` scenes with `filter:blur` transitions and `backdrop-filter` effects simultaneously. Tested: 24 sub-scenes (one per image) causes "不能播放" (can't play). Proven working: 10-12 scenes.
+
+**For multi-image chapters, use ONE scene per chapter with `tl.set()` src-swap to rotate images:**
+```js
+tl.to("#s1-img",{opacity:0,duration:.25,ease:"power2.in"},10.69);
+tl.set("#s1-img",{attr:{src:"img/ch01_02.jpg"}},10.94);
+tl.to("#s1-img",{opacity:1,duration:.25,ease:"power2.out"},10.94);
+```
+
+**Do NOT create sub-scenes per image.** Each sub-scene adds another full `position:absolute` layer with blur transitions, quickly exceeding the engine's capacity.
+
+### position:absolute only on approved elements
+
+Only `.scene`, `.brand-bar`, and `.sc-bg` may use `position:absolute`. Content elements (`.sc`, cards, images, text containers) must use flexbox layout. Stacking `<img>` elements with `position:absolute` inside a scene breaks playback.
 
 ### Font sizes too small for portrait video (INFO-FLASH style)
 
@@ -473,6 +500,7 @@ Skip on small edits (fixing a color, adjusting one duration). Run on new composi
 - **[references/tts.md](references/tts.md)** — Text-to-speech with Kokoro-82M. Voice selection, speed tuning, TTS+captions workflow. Read when generating narration or voiceover using the built-in local TTS engine.
 - **[references/external-tts.md](references/external-tts.md)** — Third-party TTS integration (MiniMax, OpenAI, etc.) with per-scene audio segmentation, speed calibration, overlap prevention, and composition wiring. Read when adding voiceover from an external TTS API to a multi-scene composition.
 - **[references/tts-workflow.md](references/tts-workflow.md)** — End-to-end TTS→HTML workflow: script splitting, audio generation, timeline calculation, composition wiring, lint/render pipeline. Read when producing a full voiceover video from scratch.
+- **[references/wechat-article-video.md](references/wechat-article-video.md)** — WeChat public account article (mp.weixin.qq.com) → HyperFrames video pipeline. API parsing, image extraction, mixed scene types (text-card, img-full, split, stat, quote), narration generation, timing, and full composition authoring. Read when the user provides a WeChat article URL.
 - **[references/audio-reactive.md](references/audio-reactive.md)** — Audio-reactive animation: map frequency bands and amplitude to GSAP properties. Read when visuals should respond to music, voice, or sound.
 - **[references/css-patterns.md](references/css-patterns.md)** — CSS+GSAP marker highlighting: highlight, circle, burst, scribble, sketchout. Deterministic, fully seekable. Read when adding visual emphasis to text.
 - **[references/video-composition.md](references/video-composition.md)** — Video-medium rules: density, color presence, scale, frame composition, design.md as brand not layout. **Always read** — these override web instincts.
