@@ -350,11 +350,19 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
 
     [Playwright 验证脚本（最小可用版）]
 
+        **必读前提：用系统已装的 Chrome / Edge，不要 `playwright install chromium`**。
+        这台机器已装好 Chrome，路径在 `C:/Program Files/Google/Chrome/Application/chrome.exe`。
+        Playwright 直接用它跑 `getComputedStyle` + 截图，0 下载。
+
         ```python
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
-            b = p.chromium.launch()
+            # ✓ 用系统 Chrome，不下载 chromium
+            b = p.chromium.launch(
+                executable_path='C:/Program Files/Google/Chrome/Application/chrome.exe',
+                args=['--no-sandbox']
+            )
             pg = b.new_page(viewport={"width": 1080, "height": 1920})  # 9:16 改 1080×1920
             pg.goto("http://localhost:8000/index.html")
             pg.wait_for_load_state("networkidle")
@@ -390,6 +398,11 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
             print("✓ Visual checks passed; review check_first_frame.png manually")
             b.close()
         ```
+
+        **如果 Chrome 路径找不到**（少数机器），回退顺序：
+        1. `C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe` (Edge)
+        2. **先 `where chrome.exe` / `where msedge.exe` 确认**有没有，没找到再问用户怎么办
+        3. **永远不要直接 `playwright install`**——除非两步确认都没有，再问用户是否下载
 
     [不验证的后果]
 

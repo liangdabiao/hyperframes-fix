@@ -221,30 +221,65 @@ inspect 会扫整个时间线的所有 sample。**它只看 HTML attribute（cla
 
 ### V3. Playwright getComputedStyle 验证（关键）
 
-这是 C3 的检测手段。`lint + inspect` 都过的 HTML，可能在浏览器里渲染出来是塌的。**必须**用 Playwright 起本地服务，加载 HTML，对代表性元素跑：
+这是 C3 的检测手段。`lint + inspect` 都过的 HTML，可能在浏览器里渲染出来是塌的。**必须**用 Playwright 起本地服务，加载 HTML，对代表性元素跑。
 
-```js
-// 1. 容器尺寸
-const comp = document.querySelector('[data-composition-id]');
-console.assert(comp.getBoundingClientRect().width === 1080);
-console.assert(comp.getBoundingClientRect().height === 1920);
+**⚠️ 必须用系统 Chrome / Edge，不要 `playwright install chromium`**（~200MB 下载，纯浪费）。这台机器已装 Chrome，0 下载走 `executable_path` 路线。
 
-// 2. 关键 layout 选择器
-const cloud = document.querySelector('.platform-cloud');
-const cs = getComputedStyle(cloud);
-console.assert(cs.display === 'grid', 'grid 布局没生效');
+```python
+from playwright.sync_api import sync_playwright
 
-// 3. 字号
-const pain = document.querySelector('.pain');
-const fontSize = parseInt(getComputedStyle(pain).fontSize);
-console.assert(fontSize >= 60, `pain 字号太小: ${fontSize}px`);
+with sync_playwright() as p:
+    # ✓ 用系统 Chrome，不下载 chromium
+    b = p.chromium.launch(
+        executable_path='C:/Program Files/Google/Chrome/Application/chrome.exe',
+        args=['--no-sandbox']
+    )
+    pg = b.new_page(viewport={"width": 1920, "height": 1080})  # 16:9
+    # 9:16 视频改 viewport={"width": 1080, "height": 1920}
+    pg.goto("http://localhost:8000/index.html")
+    pg.wait_for_load_state("networkidle")
 
-// 4. 每个 scene 的关键子元素都存在且非零
-['s1', 's2', 's3', 's4', 's5'].forEach(id => {
-  const inner = document.getElementById(id + '-inner');
-  console.assert(inner, `scene ${id} inner not found`);
-});
+    # 1. 容器尺寸
+    cs = pg.evaluate("""() => {
+        const c = document.querySelector('[data-composition-id]');
+        const r = c.getBoundingClientRect();
+        return {w: r.width, h: r.height};
+    }""")
+    assert cs['w'] == 1920 and cs['h'] == 1080, f"canvas wrong: {cs}"
+
+    # 2. 关键 layout 选择器
+    cloud = pg.locator('.platform-cloud').first
+    if cloud.count() > 0:
+        disp = pg.evaluate("getComputedStyle(document.querySelector('.platform-cloud')).display")
+        assert disp == 'grid', f'grid 布局没生效: {disp}'
+        cols = pg.evaluate("getComputedStyle(document.querySelector('.platform-cloud')).gridTemplateColumns")
+        assert cols != 'none', f'grid columns missing: {cols}'
+
+    # 3. 字号
+    pain = pg.locator('.pain').first
+    if pain.count() > 0:
+        fs = pg.evaluate("parseInt(getComputedStyle(document.querySelector('.pain')).fontSize)")
+        assert fs >= 60, f'pain 字号太小: {fs}px'
+
+    # 4. 每个 scene 的 inner 都存在
+    for sid in ['s1', 's2', 's3', 's4', 's5']:
+        inner = pg.locator(f"#{sid}-inner")
+        assert inner.count() == 1, f"scene {sid} inner not found"
+
+    # 5. 抽帧
+    pg.screenshot(path='check_first_frame.png')
+    b.close()
+print("V3 PASSED")
 ```
+
+**Chrome / Edge 路径回退顺序**（先 `where chrome.exe` / `where msedge.exe` 确认）：
+
+| 浏览器 | 路径 |
+|---|---|
+| Chrome (优先) | `C:/Program Files/Google/Chrome/Application/chrome.exe` |
+| Edge | `C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe` |
+
+**两步都没找到再问用户怎么办，绝对不要直接 `playwright install`**。
 
 ### V4. 抽帧肉眼检查（兜底）
 

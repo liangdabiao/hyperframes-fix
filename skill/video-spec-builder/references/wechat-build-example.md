@@ -420,10 +420,14 @@ npx hyperframes lint
 npx hyperframes inspect --timeout 30000
 
 # V3: Playwright getComputedStyle（CSS 真的匹配上没）
+# ⚠️ 必须用系统 Chrome，不要 `playwright install chromium`！
 python -c "
 from playwright.sync_api import sync_playwright
 with sync_playwright() as p:
-    b = p.chromium.launch()
+    b = p.chromium.launch(
+        executable_path='C:/Program Files/Google/Chrome/Application/chrome.exe',
+        args=['--no-sandbox']
+    )
     pg = b.new_page(viewport={'width':1920,'height':1080})
     pg.goto('http://localhost:8000/index.html')
     pg.wait_for_load_state('networkidle')
@@ -446,6 +450,11 @@ ffprobe -v error -show_entries stream=codec_type,codec_name,width,height,duratio
 ```
 
 **lint 过 ≠ 视觉对**。Playwright 验证是**唯一可靠**的方式（详见 `feedback_css_id_sync.md` memory）。
+
+**⚠️ Playwright 必须用系统 Chrome**：`executable_path='C:/Program Files/Google/Chrome/Application/chrome.exe'`。
+**绝对不要跑 `playwright install chromium`**——会下载 ~200MB，纯浪费，Chrome 已经装好了。
+找不到 Chrome 时回退到 Edge：`C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe`。
+两步都没找到再问用户怎么办。
 
 ---
 
