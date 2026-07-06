@@ -94,7 +94,13 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
     │           │   ├── components-catalog.md
     │           │   ├── pacing-rules.md
     │           │   ├── spec-rules.md
-    │           │   └── dialogue-style.md
+    │           │   ├── dialogue-style.md
+    │           │   ├── external-tts.md
+    │           │   ├── tts-workflow.md
+    │           │   ├── wechat-article-video.md   # 微信文章 → 视频概念指南
+    │           │   ├── wechat-build-example.md   # 微信文章 → 视频可执行 Python 范本
+    │           │   ├── hyperframes-render.md     # 渲染侧 10 条硬约束 + 5 步验证
+    │           │   └── design-md-spec.md         # 自定义 design.md YAML 格式规范
     │           └── examples/
     │               └── video-spec-spacex.md
     └── .agents/skills/hyperframes/              # HyperFrames 渲染端（npx skills add 安装）
@@ -317,6 +323,89 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
         不需要解释 HyperFrames 怎么干活——它会自己读 video-spec.md。
         你不再介入。
 
+[视觉验证（硬步骤）]
+
+    **如果你（或用户）走到了 build_html → render 这一步，必须把"视觉验证"当作硬步骤，不可跳过。**
+
+    [为什么是硬步骤]
+
+        HyperFrames 的 `lint` 报结构错（0 errors = 结构合法），`inspect` 报时间线错（0 issues = 时间线合法）。
+        **两者都不会跑 headless render**，所以 0/0 通过 ≠ 画面正确。
+        最常见的"静默失败"是 HTML ID 与 CSS 选择器对不上（见 `references/hyperframes-render.md` C3）——
+        元素结构还在、属性合法，但 CSS 不匹配 → 渲染出来内容塌成屏幕中央的 ~300px 小方块，
+        `lint` 0 errors + `inspect` 0 issues 完全看不出来。
+
+    [必须跑的 5 步验证（V1-V5）]
+
+        | # | 验证 | 工具 | 通过条件 |
+        |---|---|---|---|
+        | V1 | 结构 | `npx hyperframes lint` | 0 errors |
+        | V2 | 时间线 | `npx hyperframes inspect --timeout 30000` | 0 issues |
+        | V3 | **CSS 实际匹配** | Playwright `getComputedStyle` | 关键 layout 选择器（`display: grid` / `font-size ≥ 40` / `object-fit: contain` 等）实际生效 |
+        | V4 | **肉眼抽帧** | `ffmpeg -ss <N> -i output.mp4 -frames:v 1` | 文字不溢出 / 不挤角落 / 布局符合预期 |
+        | V5 | 媒体流 | `ffprobe` | 同时有 video+audio / 分辨率正确 / duration 误差 ≤ 0.5s |
+
+        **V1+V2+V5 是结构验证**（机器能判），**V3+V4 是视觉验证**（必须 Playwright + 肉眼看）。
+        跳 V3+V4 等于盲飞。
+
+    [Playwright 验证脚本（最小可用版）]
+
+        ```python
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as p:
+            b = p.chromium.launch()
+            pg = b.new_page(viewport={"width": 1080, "height": 1920})  # 9:16 改 1080×1920
+            pg.goto("http://localhost:8000/index.html")
+            pg.wait_for_load_state("networkidle")
+
+            # 1. composition 尺寸对
+            cs = pg.evaluate("""() => {
+                const c = document.querySelector('[data-composition-id]');
+                const r = c.getBoundingClientRect();
+                return {w: r.width, h: r.height};
+            }""")
+            assert cs["w"] == 1080 and cs["h"] == 1920, f"canvas wrong: {cs}"
+
+            # 2. 关键 layout 选择器实际生效（C3 检测点）
+            checks = [
+                (".hero-title", "fontSize", lambda v: int(float(v.replace('px',''))) >= 60),
+                (".platform-cloud", "display", lambda v: v == "grid"),
+                (".showcase-img", "objectFit", lambda v: v == "contain"),
+            ]
+            for sel, prop, ok in checks:
+                el = pg.locator(sel).first
+                if el.count() == 0:
+                    print(f"WARN: {sel} not present in this build")
+                    continue
+                val = pg.evaluate(f"getComputedStyle(document.querySelector('{sel}')).{prop}")
+                assert ok(val), f"{sel}.{prop} = {val} (failed check)"
+
+            # 3. 每个 scene 的 inner 都在
+            for sid in ['s1', 's2', 's3', 's4', 's5']:
+                assert pg.locator(f"#{sid}-inner").count() == 1, f"missing #{sid}-inner"
+
+            # 4. 抽首帧肉眼检查（最关键）
+            pg.screenshot(path="check_first_frame.png", full_page=False)
+            print("✓ Visual checks passed; review check_first_frame.png manually")
+            b.close()
+        ```
+
+    [不验证的后果]
+
+        实战踩过的真实 bug：HTML 里 ID 从 `s01` 改成 `s1`，CSS 里 34 个 `#s01 .xxx` 漏改，
+        → lint 0 errors / inspect 0 issues / 渲染出来 5 段内容全挤屏幕中央 30% 区域。
+        唯一可靠的检测 = Playwright `getComputedStyle` 看 `display` 真的等于 `grid`。
+        详见 `feedback_css_id_sync.md` memory + `references/hyperframes-render.md` C3 / V3。
+
+    [当用户说"渲染出问题了" / "画面不对"]
+
+        1. 先跑上面 V3 脚本看 layout 选择器实际值
+        2. 比对预期值，定位是 ID 没对上 / CSS 写错 / 字号太小 / 父容器尺寸错
+        3. 修完再跑一次 V3，确认 `console.assert` 全部通过
+        4. 抽帧肉眼复核（V4）
+        5. 重新 `npx hyperframes render`
+
 [References]
     按需加载，不要一次性全读：
 
@@ -330,7 +419,10 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
     - `references/dialogue-style.md`        对话风格范本（典型表达 / 方案引导 / 影视参考词典）
     - `references/external-tts.md`          MiniMax 云端 TTS API（生成 / 速度校准 / 浮点重叠防御 / audio 摆放）
     - `references/tts-workflow.md`          TTS 端到端 6 步流水线（脚本 → 音频 → 时间线 → HTML → lint → render）
-    - `references/wechat-article-video.md`  微信文章 URL → 视频全流程（API 解析 / 图片提取 / 5 种 scene 类型 / CSS & 动画范式）
+    - `references/wechat-article-video.md`  微信文章 URL → 视频概念指南（API 解析 / 图片提取 / 5 种 scene 类型 / CSS 范式）
+    - `references/wechat-build-example.md`  微信文章 → 视频的可执行 Python 范本（一个 build.py 跑完全流程）
+    - `references/hyperframes-render.md`    HyperFrames 渲染侧 10 条硬约束（C1-C10）+ 5 步验证（V1-V5）+ 故障速查
+    - `references/design-md-spec.md`        自定义 design.md YAML 格式规范（YAML 头字段速查 + 6 章节模板 + 完整范本）
 
     项目根 `design.md` —— 用户自定义主题文件（HyperFrames 渲染端读取的唯一主题文件，路径基准 = video-spec.md 所在目录）
 

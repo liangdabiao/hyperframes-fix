@@ -197,6 +197,26 @@ This repository's TTS pipeline is designed around five rules:
 
 Full spec in `references/external-tts.md`. End-to-end 6-step pipeline in `references/tts-workflow.md`.
 
+### Visual validation (required)
+
+Once you're at the `build_html.py` → render step, watch out: HyperFrames' `lint` and `inspect` **don't run a headless render**. `lint 0 errors + inspect 0 issues` is not the same as "the picture is right."
+
+The classic silent failure is renaming HTML IDs without updating the matching CSS selectors — say, renaming `s01` → `s1` everywhere in the HTML but leaving 34 `#s01 .platform-cloud`-style selectors untouched. Result: all 5 scenes end up squashed into the middle ~30% of the canvas, and lint doesn't notice.
+
+**So from this point on, every built HTML has to clear a 5-step validation:**
+
+| # | Check | Tool | Pass condition |
+|---|---|---|---|
+| V1 | Structure | `npx hyperframes lint` | 0 errors |
+| V2 | Timeline | `npx hyperframes inspect` | 0 issues |
+| V3 | **CSS actually matches** | Playwright `getComputedStyle` | Key layout selectors actually take effect |
+| V4 | **Manual frame check** | `ffmpeg -ss <N> -i output.mp4 -frames:v 1` | No overflow, layout matches intent |
+| V5 | Media streams | `ffprobe` | Both video+audio present, duration error ≤ 0.5s |
+
+V1+V2+V5 are structural (machine-judged). **V3+V4 are visual (Playwright + your eyes)**. Skipping V3+V4 is flying blind.
+
+**The bar for "render succeeded" is V3 confirming `display: grid` is actually `grid`, font-size is actually ≥ 60px, and `object-fit: contain` is actually `contain`.** Full script and troubleshooting in the V1-V5 section of `references/hyperframes-render.md`.
+
 ## Visual themes
 
 What a video looks like — colors, fonts, motion, transition style — is decided by a "theme." You either use one of HyperFrames' built-in presets, or write your own.
@@ -269,7 +289,10 @@ video-spec-builder/
 │   ├── dialogue-style.md
 │   ├── external-tts.md            MiniMax cloud TTS API, rate calibration, float-overlap guard
 │   ├── tts-workflow.md            6-step end-to-end pipeline (script → audio → timeline → HTML → lint → render)
-│   └── wechat-article-video.md    WeChat article URL → video (API parse, image extraction, 5 scene types)
+│   ├── wechat-article-video.md    WeChat article URL → video — concept guide (API parse, image extraction, 5 scene types)
+│   ├── wechat-build-example.md    WeChat article → video — executable Python template (one build.py runs the whole pipeline)
+│   ├── hyperframes-render.md      Renderer-side 10 hard constraints (C1-C10) + 5-step validation (V1-V5) + troubleshooting
+│   └── design-md-spec.md          Custom design.md YAML format spec (field reference + 6-section template)
 ├── templates/
 │   └── video-spec-template.md    output template for video-spec.md
 ├── examples/

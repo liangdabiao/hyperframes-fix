@@ -197,6 +197,26 @@ HyperFrames 是把 HTML 渲染成视频。这句话是它一切能力和限制�
 
 完整规范在 `references/external-tts.md`,端到端 6 步流水线在 `references/tts-workflow.md`。
 
+### 视觉验证(必做)
+
+走到 `build_html.py` → 渲染这一步,有个坑是 HyperFrames 的 `lint` 和 `inspect` **都不会跑 headless render**。换句话说,`lint 0 errors + inspect 0 issues` 不等于画面正确。
+
+最常见的静默失败是 HTML 里 ID 改了、CSS 选择器没跟上(比如把 `s01` 全改成 `s1`,但 `#s01 .platform-cloud` 这类 CSS 选择器漏了 34 处没改)——结果 5 段内容全挤屏幕中央 ~30% 区域,lint 完全不报。
+
+**所以从这一步起,所有 build 完的 HTML 必须走完 5 步验证**:
+
+| # | 验证 | 工具 | 通过条件 |
+|---|---|---|---|
+| V1 | 结构 | `npx hyperframes lint` | 0 errors |
+| V2 | 时间线 | `npx hyperframes inspect` | 0 issues |
+| V3 | **CSS 实际匹配** | Playwright `getComputedStyle` | 关键 layout 选择器实际生效 |
+| V4 | **肉眼抽帧** | `ffmpeg -ss <N> -i output.mp4 -frames:v 1` | 文字不溢出、布局符合预期 |
+| V5 | 媒体流 | `ffprobe` | 同时有 video+audio、duration 误差 ≤ 0.5s |
+
+V1+V2+V5 是结构验证(机器能判),**V3+V4 是视觉验证(必须 Playwright + 肉眼看)**。跳 V3+V4 等于盲飞。
+
+**只有 V3 实际验证过 `display: grid` 真的等于 `grid`、字号真的 ≥ 60px、`object-fit: contain` 真的等于 `contain`,才能算"渲染成功"**。完整脚本与故障速查在 `references/hyperframes-render.md` 的 V1-V5 章节。
+
 ## 视觉主题
 
 视频长什么样(配色、字体、动效、转场风格),由"主题"决定。主题要么用 HyperFrames 自带的预设,要么自己写一套。
@@ -269,7 +289,10 @@ video-spec-builder/
 │   ├── dialogue-style.md
 │   ├── external-tts.md            MiniMax 云端 TTS API、速度校准、浮点重叠防御
 │   ├── tts-workflow.md            端到端 6 步流水线(脚本→音频→timeline→HTML→lint→render)
-│   └── wechat-article-video.md    微信文章 URL → 视频全流程(API 解析 / 图片提取 / 5 种 scene 类型)
+│   ├── wechat-article-video.md    微信文章 URL → 视频概念指南(API 解析 / 图片提取 / 5 种 scene 类型)
+│   ├── wechat-build-example.md    微信文章 → 视频可执行 Python 范本(一个 build.py 跑完全流程)
+│   ├── hyperframes-render.md      渲染侧 10 条硬约束(C1-C10) + 5 步验证(V1-V5) + 故障速查
+│   └── design-md-spec.md          自定义 design.md YAML 格式规范(YAML 头字段速查 + 6 章节模板)
 ├── templates/
 │   └── video-spec-template.md    video-spec.md 的输出模板
 ├── examples/
