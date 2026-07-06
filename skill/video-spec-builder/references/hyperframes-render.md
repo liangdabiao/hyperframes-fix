@@ -28,7 +28,7 @@ index.html
   ↓  6. npx hyperframes inspect              ← 0 issues 必须
   ↓  7. Playwright getComputedStyle 验证     ← 关键 layout 选择器都生效
   ↓  8. ffmpeg 抽 1 帧肉眼检查              ← 兜底
-  ↓  9. npx hyperframes render
+  ↓  9. npx hyperframes render . --workers 1   ← 低内存环境(<4GB free)必须 `--workers 1`
 renders/output.mp4
   ↓  10. ffprobe 验证音轨存在 + 时长 + 分辨率
 ```
@@ -183,7 +183,23 @@ GSAP 时间线进入/退出动画要操作 scene 的 inner 容器（用 `opacity
 @font-face { font-family: 'PingFang SC'; src: local('PingFang SC'); }
 ```
 
-### C10. 9:16 竖屏布局的硬规则
+### C10. `W, H` Python 常量必须和 CSS 里的 width/height 值严格一致
+
+`build_html.py` 里 `W, H = 1080, 1920` 必须等于 CSS 里 `data-composition-id { width: 1080px; height: 1920px; }`。
+不一致会导致 HyperFrames 的 data-* 属性与 CSS 布局打架，抽帧时出现"场景对调"(比如 S01 内容在 S03 时间窗口出现)。
+
+```python
+# build_html.py
+W, H = 1080, 1920   # ← 改了这里必须改下面 CSS
+
+CSS = f"""
+[data-composition-id] {{ width: {W}px; height: {H}px; }}
+"""
+```
+
+建议 CSS 也用 f-string 引用 `{W}`/`{H}` 变量，不要硬编码两套数字。但注意 CSS 里的 `{` 字符在 f-string 中要写成 `{{`。
+
+### C11. 9:16 竖屏布局的硬规则
 
 抖音/小红书/视频号/TikTok/Shorts 都是 9:16。CSS 里：
 - 字号基线 ≥ 40px（4 米外手机也能看）
@@ -218,6 +234,8 @@ npx hyperframes inspect
 ```
 
 inspect 会扫整个时间线的所有 sample。**它只看 HTML attribute（class/data-start/data-duration）决定 scene 是否可见，不看 GSAP 状态**。所以 inspect 通过 ≠ 视觉正确（见 C3）。
+
+⚠️ **inspect 报文字溢出(overflowed bottom Npx)**：竖屏 1080×1920 下，横屏继承来的大字号可能在 flex 居中布局里 line-box 总和超过容器高。这通常不是视觉 bug（overflow 被 hidden/clip 兜住了），但 inspect 保守报 error。修复参考值：hero-title 104→96px, kinetic-quote 80→72px, info-num 88→76px, showcase-title 64→58px, showcase-img max-height 760→680px。
 
 ### V3. Playwright getComputedStyle 验证（关键）
 
@@ -400,12 +418,15 @@ html = f"""<!DOCTYPE html>
 | 渲染报 "Composition has zero duration" | `DOMContentLoaded` 没用 `load`（C1） | 改 C1 |
 | 报 "Composition has zero duration" 但 GSAP 看起来对 | `tl.fromTo` 缺 `immediateRender:true`（C2） | 加 C2 |
 | 渲染出图但内容全挤屏幕中央 ~30% | ID 与 CSS 选择器不对齐（C3） | 改 ID / CSS 对齐，跑 V3 验证 |
+| 渲染 OOM(malloc of size failed) + 竖屏 1080×1920 | 多 worker Chrome 进程吃满 ~2.4GB free 内存 | `--workers 1` 减小并发内存峰值 |
+| 抽帧场景对调(S01 内容出现在 S03 时间) | Python `W,H` 常量与 CSS width/height 不一致（C10） | 确保 `W,H=1080,1920` 和 CSS `width:1080px;height:1920px` 严格一致 |
+| inspect 报文字 overflowed bottom | 横屏大字号在竖屏 flex 居中布局里 line-box 超出容器（V2） | 参考值微缩:hero-title 104→96, kinetic-quote 80→72, info-num 88→76 |
 | 渲染出图但没有声音 | `<audio>` 进了 composition 内部（C4） | 移到 `<body>` 顶层 |
 | 渲染有声音但有片段缺失 | `data-duration` 用了 slot 时长而非 audio 时长（C6） | 改用 `audio_dur` |
 | lint 报 `overlapping_clips_same_track` | 浮点累积（C5） | 强制对齐或下取整 0.1s |
 | lint 报 `root_missing_*` | composition div 属性不全（C7） | 加 `data-composition-id` / `data-width` / `data-height` |
 | 字体 fallback 到默认难看 | 没注册 `@font-face`（C9） | 加 C9 块 |
-| 9:16 文字太挤 / 字号太小 | 用了 1920 横屏的 px 值（C10） | 全部按 1080 宽 9:16 重算 |
+| 9:16 文字太挤 / 字号太小 | 用了 1920 横屏的 px 值（C11） | 全部按 1080 宽 9:16 重算 |
 | 抖音/小红书首页刷不到合理缩略图 | 黑边过多或文字溢出 | 抽首帧用 V4 检查 |
 
 ---
