@@ -27,6 +27,7 @@ description: 填写 video-spec.md 模板时的字段约束、规格一致性校�
 - 视觉主题必填，2 选 1（预设或自定义），不能空
 - accent 色不改写默认；改就给具体 hex，不接受「品牌色」「和 logo 一样」
 - 画质：草稿 / review 阶段填 standard，最终交付填 high（high 渲染耗时约翻倍）
+- **字号硬约束：1080×1920 竖屏（抖音/TikTok/Shorts/小红书/视频号）正文 ≥ 64px、主标题 ≥ 100px、标签 ≥ 28px，正文颜色用深色（≤ #333）不用灰色。24px 在手机等效 ~9px，直接判不通过。**（见 memory: `feedback_large_fonts_elderly_accessible.md`）
 
 ---
 
