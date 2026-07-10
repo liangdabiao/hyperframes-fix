@@ -9,8 +9,10 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
     **迭代模式**：用户对已有 video-spec.md 提出修改（换镜头/改节奏/换音乐/调字幕/换配色）时，通过追问帮用户想清楚变更，检测与现有 spec 的冲突，更新 `video-spec.md`。
 
 [启动检查]
-    0. 检测用户消息是否包含 `mp.weixin.qq.com` URL：
-        - 是 → 微信文章转视频，跳过苏格拉底对话，直接 read `references/wechat-article-video.md` 全流程
+    0. 检测用户消息形态分流：
+        - 含 `mp.weixin.qq.com` URL → 微信文章转视频，跳过苏格拉底对话，read `references/wechat-article-video.md` 全流程
+        - 含 `linuxdo` / `LinuxDO` / `V2EX` / `v2ex` / `即刻` / `微博热搜` / `热榜` / `热搜`，或粘 1-N 条 hot topic 标题 → 走 5-question gate 收口后 read `references/linuxdo-hot-topic-video.md` 全流程
+        - 否则 → 正常苏格拉底对话
     1. 扫描项目目录查找 video-spec 文档：
         - 精确匹配：`video-spec.md`
         - 模糊匹配：`*video-spec*.md`、`*分镜*.md`、`*storyboard*.md`
@@ -99,6 +101,7 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
     │           │   ├── tts-workflow.md
     │           │   ├── wechat-article-video.md   # 微信文章 → 视频概念指南
     │           │   ├── wechat-build-example.md   # 微信文章 → 视频可执行 Python 范本
+    │           │   ├── linuxdo-hot-topic-video.md # LinuxDO/V2EX 热榜话题 → 竖屏短视频（含 sub-composition opacity bug 防御）
     │           │   ├── hyperframes-render.md     # 渲染侧 10 条硬约束 + 5 步验证
     │           │   └── design-md-spec.md         # 自定义 design.md YAML 格式规范
     │           └── examples/
@@ -216,6 +219,7 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
     | 主题 / 设计系统（8 visual-styles + design.md） | 聊视觉风格的时候定 |
 | MiniMax 云端 TTS（speech-2.8-hd，voice_id 多选） | 用户提到"更自然的中文 TTS"、"云端配音"、"MiniMax" |
 | 微信文章 → 视频（自动解析 mp.weixin.qq.com，5 种 scene 类型） | 用户给微信文章 URL |
+| LinuxDO/V2EX 热榜话题 → 竖屏短视频（blockframe 预设，VO-paced reveal） | 用户提到 linuxdo/v2ex/即刻/微博热搜/热榜，或粘 1-N 条 hot topic 标题 |
 
     [使用方式]
         - 每进入一个新话题，扫这张表看哪些能力跟用户需求相关
@@ -434,6 +438,7 @@ description: 当用户说想做一个视频、宣传片、产品演示、动画�
     - `references/tts-workflow.md`          TTS 端到端 6 步流水线（脚本 → 音频 → 时间线 → HTML → lint → render）
     - `references/wechat-article-video.md`  微信文章 URL → 视频概念指南（API 解析 / 图片提取 / 5 种 scene 类型 / CSS 范式）
     - `references/wechat-build-example.md`  微信文章 → 视频的可执行 Python 范本（一个 build.py 跑完全流程）
+    - `references/linuxdo-hot-topic-video.md`  LinuxDO/V2EX 热榜话题 → 竖屏短视频（5-question gate + topic_sources 字段 + sub-composition opacity 防御 + 8 镜模板）
     - `references/hyperframes-render.md`    HyperFrames 渲染侧 10 条硬约束（C1-C10）+ 5 步验证（V1-V5）+ 故障速查
     - `references/design-md-spec.md`        自定义 design.md YAML 格式规范（YAML 头字段速查 + 6 章节模板 + 完整范本）
 

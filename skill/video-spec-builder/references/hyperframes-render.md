@@ -12,6 +12,48 @@ video-spec.md 写完之后，要把它变成 MP4 / WebM，必须把分镜转成�
 
 ---
 
+## 🚨 第 0 条（最高优先级 · 渲染必须用官方 CLI）
+
+**渲染就是 `npx hyperframes render`。没有第二种方式。**
+
+### ❌ 绝对不要做的事
+
+- **不要写自定义的 `render_video.js`（puppeteer-core 逐帧截图 + ffmpeg mux）**
+- **不要写 Playwright 逐帧捕获脚本**
+- **不要从老项目（sellersprite-skills-intro 等）拷它的 render_video.js**
+- **不要因为"听起来更可控" / "更熟悉 puppeteer" 而绕开 CLI**
+
+这些老脚本在 sellersprite 时期用过，是因为当时 CLI 还不成熟。**现在 CLI 已经是唯一正确的渲染入口**。自定义脚本的失败模式包括但不限于：
+- 漏抓 GSAP 时间线第一帧（headless 启动时序问题）
+- audio 元素与视频帧不同步
+- scene visibility 逻辑跟 HyperFrames runtime 不一致
+- 旁白声音丢失
+- 没经过 `lint` / `inspect` 检查
+- 无法利用 CLI 的 audio/CSS/font 规范化
+- 维护负担：每开一个新项目都重写一遍
+
+### ✅ 渲染的正确流程
+
+```bash
+# 1. lint + inspect 必须 0 errors
+npx hyperframes lint
+npx hyperframes inspect --timeout 30000
+
+# 2. Playwright getComputedStyle 验证（V3，见下文）
+python check_layout.py
+
+# 3. 渲染（Windows 竖屏必须 --workers 1 防 OOM）
+npx hyperframes render --workers 1 --fps 30 -o renders/<name>.mp4
+
+# 4. ffprobe 验证
+ffprobe -v error -show_entries stream=codec_type,codec_name,width,height,duration \
+  -of default renders/<name>.mp4
+```
+
+如果 `npx hyperframes render` 失败，**修 HTML 让它过 lint**，不要绕开 CLI。这是 HyperFrames 设计契约的唯一正解。
+
+---
+
 ## 整体流程
 
 ```
@@ -146,17 +188,45 @@ for i in range(len(scenes) - 1):
 
 后者会让渲染器把 audio clip 强行截到 audio 真实长度，留出"无声 2s"，体验崩坏。
 
-### C7. composition 根属性必须齐全
+### C7. composition 根属性必须齐全（最高频踩坑，渲染前 100% 检查）
+
+> ⚠️ **写根 div 之前先抄下面这块模板，再改字段。不要从脑子里的记忆"复现"——你一定会漏字段。**
 
 ```html
 <div data-composition-id="main"
-     data-width="1080" data-height="1920"
-     data-start="0" data-duration="<total_seconds>">
+     data-start="0"
+     data-duration="<total_seconds>"
+     data-width="1080"
+     data-height="1920"
+     data-fps="30">
 ```
 
-- 缺 `data-composition-id` → lint 报 `root_missing_composition_id`
-- 缺 `data-width/data-height` → lint 报 `root_missing_dimensions`
-- `data-duration` 与各 scene 的 `data-start + data-duration` 之和必须精确相等
+**5 个属性一个都不能少**：
+
+| 缺哪个 | lint 报什么 | 现象 |
+|---|---|---|
+| `data-composition-id` | `root_missing_composition_id` | 渲染器找不到入口 |
+| `data-start` | `root_composition_missing_data_start` | 渲染器无法开始播放 |
+| `data-duration` | `root_missing_duration` | 渲染器算不出总长 |
+| `data-width` | `root_missing_dimensions` | 渲染直接失败 |
+| `data-height` | `root_missing_dimensions` | 渲染直接失败 |
+
+`data-duration` 与各 scene 的 `data-start + data-duration` 之和必须精确相等。
+
+**实战防呆**：build_html.py / 写 HTML 时把这 5 个属性放在同一行，注释"// C7 五件套"，方便肉眼核对。例子：
+
+```python
+# build_html.py — C7 五件套，渲染前必检
+root_attrs = (
+    f'data-composition-id="main" '
+    f'data-start="0" '                            # ← 必填
+    f'data-duration="{total}" '                   # ← 必填
+    f'data-width="{W}" '                          # ← 必填
+    f'data-height="{H}" '                         # ← 必填
+    f'data-fps="30"'                              # ← 可选但推荐
+)
+html = f'<div {root_attrs}>...'
+```
 
 每个 scene 自己的 div：
 
@@ -206,6 +276,65 @@ CSS = f"""
 - 文字宽度收窄到画面 60%（max-width: 920px @ 1080-wide）
 - padding-top/bottom 至少 120px
 - grid/flex 子元素 max-width 不要写死 1920 横屏的数值
+
+### C12. 绝不要在 CSS / JS 里手动控制 `.scene` 的 display / visibility（最高优先级 · 实战血泪）
+
+> ⚠️ **HyperFrames runtime 已经根据每个 scene 的 `data-start` / `data-duration` 自动管 visibility。你只要写好时间线，不要去抢这个活。**
+
+违反这条的失败模式（ai-agent-ch01 实战踩过，最严重的"静默失败"之一）：
+- CSS 写 `.scene { display: none }` 当默认隐藏
+- JS 写 `showSceneAt(t)` helper，按时间给当前 scene 设 `style.display = "block"`
+- 看起来 preview 时一切正常（你给的 `tl.seek(t)` + `showSceneAt(t)` 双管齐下）
+- **渲染时 HyperFrames renderer 只 seek 时间线，不会调你的 `showSceneAt`**
+- 同时 inline `style.display='block'` 优先级 > CSS class > runtime 的 clip 类切换
+- 结果：被 showSceneAt 设过的那个 scene 永远 inline display:block，其他 scene 永远 display:none
+- **MP4 80% 时长全白或只有一帧内容**，lint 0 errors / inspect 0 issues / V3 还会误判通过
+
+#### ❌ 绝对不要做的事
+
+```css
+/* ✗ 错：CSS 默认隐藏 */
+.scene { display: none; }
+```
+
+```js
+// ✗ 错：手动切换 display 的 helper
+function showSceneAt(t) {
+  const active = /* 算哪个 scene */;
+  document.querySelectorAll('.scene').forEach(s => {
+    s.style.display = (s.id === active) ? 'block' : 'none';
+  });
+}
+// ✗ 错：preview / debug 时也调它
+let previewTime = 5.0;
+showSceneAt(previewTime);
+tl.seek(previewTime, false);
+```
+
+#### ✅ 正确做法
+
+CSS 不设 display（默认 block 即可），runtime 通过加/去 `clip` 类控制可见性：
+
+```css
+/* ✓ 对：不设 display */
+.scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--on-primary);
+}
+```
+
+```js
+// ✓ 对：preview / debug 时只 seek 时间线，runtime 自己会管 visibility
+let previewTime = 5.0;
+tl.seek(previewTime, false);
+```
+
+**为什么 V3 检测不到**：常见的 `check_layout.py` 写法是手动 forEach 每个 scene `style.display='block'` 再 getComputedStyle —— 这一动作**恰好屏蔽了 bug**（强制 display:block 代替了 runtime 的可见性逻辑）。要真正检测，必须用 V3 里的 **MD5 帧唯一性检查**（见 V3 末尾新增小节）。
+
+**HyperFrames 官方契约原话**（来自 `hyperframes-core`）：
+> "HyperFrames already shows/hides clips based on data-start and data-duration. Animating display/visibility on the clip itself races with the framework's own show/hide."
 
 ---
 
@@ -298,6 +427,38 @@ print("V3 PASSED")
 | Edge | `C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe` |
 
 **两步都没找到再问用户怎么办，绝对不要直接 `playwright install`**。
+
+#### V3.5 — MD5 帧唯一性检查（必加，专治"只有一个 scene 可见"静默失败）
+
+光跑 getComputedStyle 不够 —— 传统的 check_layout.py 写法会手动 forEach 每个 scene `style.display='block'`，**这一动作恰好屏蔽了 C12 的 bug**（强制 inline display 代替了 runtime 的可见性逻辑）。要在 V3 之后追加一次"不预设 display，纯靠 timeline seek"的截图比对，每个 scene 中段抽一帧，验 MD5 全不同。
+
+```python
+# 紧跟在 V3 主流程后面，不要 forEach display
+import hashlib
+
+scene_mids = [
+    ("s1", 2.5), ("s2", 8.0), ("s3", 14.0), ("s4", 22.0),
+    ("s5", 30.0), ("s6", 36.0), ("s7", 50.0), ("s8", 65.0),
+    ("s9", 75.0), ("s10", 84.0),
+]
+hashes = {}
+for sid, t in scene_mids:
+    # 关键：只 seek，不动 .scene 的 display
+    pg.evaluate(f"window.__timelines['main'].seek({t}, false)")
+    pg.wait_for_timeout(300)
+    png_bytes = pg.screenshot()
+    hashes[sid] = hashlib.md5(png_bytes).hexdigest()
+
+# 所有 hash 必须互不相同；相邻 scene 之间相同 = 那段时间里画面没变 = 静默失败
+unique = len(set(hashes.values()))
+assert unique == len(scene_mids), (
+    f"C12 regression: only {unique}/{len(scene_mids)} unique frames. "
+    f"Most likely cause: CSS .scene {{display:none}} + JS showSceneAt 强制 inline display. "
+    f"hashes: {hashes}"
+)
+```
+
+如果这一步失败：直接看 index.html 是否有 `.scene { display: none }` 或 `showSceneAt` 函数，删干净再 re-render。这一步是 C12 的检测手段，**也是 C12 bug 唯一能被机器发现的途径**。
 
 ### V4. 抽帧肉眼检查（兜底）
 
@@ -428,6 +589,7 @@ html = f"""<!DOCTYPE html>
 | 字体 fallback 到默认难看 | 没注册 `@font-face`（C9） | 加 C9 块 |
 | 9:16 文字太挤 / 字号太小 | 用了 1920 横屏的 px 值（C11） | 全部按 1080 宽 9:16 重算 |
 | 抖音/小红书首页刷不到合理缩略图 | 黑边过多或文字溢出 | 抽首帧用 V4 检查 |
+| **MP4 大部分全白 / 只有一个 scene 内容** | CSS `.scene { display:none }` + JS `showSceneAt(t)` helper 给某 scene 设 inline `style.display='block'`，渲染时 runtime 切 visibility 被 inline override（C12） | 删 CSS 的 `display:none` + 删 `showSceneAt`，让 runtime 用 `clip` 类自管 visibility；用 V3.5 MD5 帧唯一性检查兜底 |
 
 ---
 
